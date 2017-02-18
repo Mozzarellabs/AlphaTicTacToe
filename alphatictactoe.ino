@@ -1,15 +1,18 @@
-#include <stdlib.h>
 #include <Adafruit_NeoPixel.h>
 #ifdef __AVR__
   #include <avr/power.h>
 #endif
 
+#include "./state.h"
+#include "./ia.h"
+
 #define POWER 32
 #define DELAY 50
 
-#define COLOR_NONE 0,POWER,POWER
+#define COLOR_NONE 0,POWER/2,POWER/2
 #define COLOR_PLAYER_1 0,POWER,0
 #define COLOR_PLAYER_2 POWER,0,0
+#define DRAW POWER/4,POWER/4,POWER/4
 
 #define BUTTON_START 2
 #define BUTTON_END 11
@@ -30,42 +33,41 @@ Adafruit_NeoPixel _strip = Adafruit_NeoPixel(12 * 9, PIN, NEO_GRB + NEO_KHZ800);
 // and minimize distance between Arduino and first pixel.  Avoid connecting
 // on a live circuit...if you must, connect GND first.
 
-typedef struct
-{
-    uint8_t played;
-    uint8_t won;
-    uint8_t buttonsState[9]; // 1 if pressed during the current loop, 2 for released
-    uint8_t buttonsPrev[9]; // Value at the previous loop
-    uint32_t color[9]; // Desired color
-} UIState;
 UIState* _ui;
 
-typedef struct
-{
-    void (*func)(void*);
-    void* data;
-    void* next;
-} Action;
-Action* _actions;
-Action* _lastAction;
-
-uint8_t _buttonStates[9];
-void (*IA_func)(void*);
-
+//
+// State stuff
+//
 void UIState_init(void* u)
 {
     UIState* ui = (UIState*)u;
+
+    ui->iaLevel = 0;
+    ui->played = 0;
+    ui->won = 0;
+    ui->coupPlayed = 0;
     for (int i = 0; i < 9; ++i)
     {
-        ui->played = 0;
-        ui->won = 0;
         ui->buttonsState[i] = 0;
         ui->buttonsPrev[i] = HIGH;
         ui->color[i] = 0;
     }
 }
 
-void UIState_process_inputs(void* u)
+void UIState_reset(void* u)
+{
+    UIState* ui = (UIState*)u;
+
+    ui->won = 0;
+    ui->coupPlayed = 0;
+    for (uint8_t i = 0; i < 9; ++i)
+        ui->buttonsState[i] = 0;
+}
+
+//
+// I/O stuff\
+//
+void UIState_process_inputs(void* u, uint8_t playerId)
 {
     UIState* ui = (UIState*)u;
     uint8_t buttons[9];
@@ -78,6 +80,29 @@ void UIState_process_inputs(void* u)
         uint16_t realButtonId = i - BUTTON_START;
         ui->buttonsPrev[realButtonId] = buttonState;
         buttons[realButtonId] = buttonState == LOW ? 1 : 0;
+    }
+
+    int potard = analogRead(A4);
+    // TODO: change default color based on IA
+    if (potard < 255)
+    {
+        ui->iaLevel = 0;
+        ui->IA_func = UIState_play_IA_noplay;
+    }
+    else if (potard < 512)
+    {
+        ui->iaLevel = 1;
+        ui->IA_func = UIState_play_IA_random;
+    }
+    else if (potard < 768)
+    {
+        ui->iaLevel = 2;
+        ui->IA_func = UIState_play_IA_semi_random;
+    }
+    else
+    {
+        ui->iaLevel = 3;
+        ui->IA_func = UIState_play_IA_semi_random;
     }
 
     // Check the number of buttons pressed
@@ -95,13 +120,9 @@ void UIState_process_inputs(void* u)
         if (ui->buttonsState[lastId] == 0)
         {
             ui->played = 1;
-            ui->buttonsState[lastId] = 1;
+            ui->buttonsState[lastId] = playerId;
+            ui->coupPlayed++;
         }
-    }
-    else if (pressed == 2)
-    {
-        for (uint8_t i = 0; i < 9; ++i)
-            ui->buttonsState[i] = 0;
     }
 }
 
@@ -133,8 +154,18 @@ void UIState_set_all_lights(void* u, uint32_t color)
         delay(100);
         _strip.show();
     }
+    delay(3000);
 }
 
+void set_button_color(uint16_t id, uint32_t color)
+{
+    for (uint8_t i = id * 12; i < (id + 1) * 12; ++i)
+        _strip.setPixelColor(i, color);
+}
+
+//
+// Gameplay stuff
+//
 int UIState_check_win(void* u, uint8_t player)
 {
     UIState* ui = (UIState*)u;
@@ -187,42 +218,18 @@ int UIState_check_win(void* u, uint8_t player)
     if (inLine == 3)
         ui->won = 1;
 
-    if (ui->won == 1)
+    // If nobody won
+    if (ui->won == 0 && ui->coupPlayed == 9)
+        return -1;
+    else if (ui->won == 1)
         return 1;
     else
         return 0;
 }
 
-void UIState_play_IA_random(void* u)
-{
-    UIState* ui = (UIState*)u;
-
-    delay(1000);
-    uint8_t played = 0;
-    while (!played)
-    {
-        uint8_t id = rand() / ((RAND_MAX - 1) / 9);
-        if (ui->buttonsState[id] == 0)
-        {
-            played = 1;
-            ui->buttonsState[id] = 2;
-        }
-    }
-}
-
-void UIState_reset_play(void* u)
-{
-    UIState* ui = (UIState*)u;
-
-    ui->played = 0;
-}
-
-void set_button_color(uint16_t id, uint32_t color)
-{
-    for (uint8_t i = id * 12; i < (id + 1) * 12; ++i)
-        _strip.setPixelColor(i, color);
-}
-
+//
+// Runtime stuff
+//
 void setup() {
     // Debug stuff
     //Serial.begin(9600);
@@ -231,12 +238,18 @@ void setup() {
     for (uint8_t i = BUTTON_START; i < BUTTON_END; ++i)
         pinMode(i, INPUT_PULLUP);
 
+    // Selector
+    analogReference(DEFAULT);
+    pinMode(A4, INPUT);
+
     // UI
     _ui = new UIState;
     UIState_init(_ui);
 
     // IA
-    IA_func = &UIState_play_IA_random;
+    pinMode(0, INPUT);
+    randomSeed(analogRead(0));
+    _ui->IA_func = &UIState_play_IA_semi_random;
 
     // Neopixel init
     _strip.begin();
@@ -244,36 +257,57 @@ void setup() {
 }
 
 void loop() {
-    UIState_process_inputs(_ui);
+    UIState_update_lights(_ui);
 
-    if (_ui->won == 0)
+    // First player
+    // If the played did not do anything, loop
+    while (!_ui->played)
     {
-        UIState_update_lights(_ui);
+        delay(DELAY);
+        UIState_process_inputs(_ui, 1);
+    }
+    _ui->played = 0;
+    UIState_update_lights(_ui);
 
-        // If the played did not do anything, loop
-        if (!_ui->played)
-        {
-            delay(DELAY);
-            return;
-        }
-        UIState_reset_play(_ui);
+    // Check win
+    int winState = UIState_check_win(_ui, 1);
+    if (winState == 1)
+    {
+        UIState_set_all_lights(_ui, _strip.Color(COLOR_PLAYER_1));
+        UIState_reset(_ui);
+        return;
+    }
+    else if (winState == -1)
+    {
+        UIState_set_all_lights(_ui, _strip.Color(DRAW));
+        UIState_reset(_ui);
+        return;
+    }
 
-        // Check win
-        if (UIState_check_win(_ui, 1))
-        {
-            UIState_set_all_lights(_ui, _strip.Color(COLOR_PLAYER_1));
-            return;
-        }
+    // Second player
+    _ui->IA_func(_ui);
+    // If the player did not do anything, loop
+    while (!_ui->played)
+    {
+        delay(DELAY);
+        UIState_process_inputs(_ui, 2);
+    }
+    _ui->played = 0;
+    UIState_update_lights(_ui);
 
-        IA_func(_ui);
-
-        // Check win
-        if (UIState_check_win(_ui, 2))
-        {
-            UIState_set_all_lights(_ui, _strip.Color(COLOR_PLAYER_2));
-            return;
-        }
-        UIState_reset_play(_ui);
+    // Check win
+    winState = UIState_check_win(_ui, 2);
+    if (winState == 1)
+    {
+        UIState_set_all_lights(_ui, _strip.Color(COLOR_PLAYER_2));
+        UIState_reset(_ui);
+        return;
+    }
+    else if (winState == -1)
+    {
+        UIState_set_all_lights(_ui, _strip.Color(DRAW));
+        UIState_reset(_ui);
+        return;
     }
 
     delay(DELAY);
