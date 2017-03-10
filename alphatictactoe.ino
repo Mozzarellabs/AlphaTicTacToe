@@ -9,10 +9,12 @@
 #define POWER 32
 #define DELAY 50
 
+#define BLACK 0, 0, 0
 #define COLOR_NONE 0,POWER/2,POWER/2
 #define COLOR_PLAYER_1 0,POWER,0
 #define COLOR_PLAYER_2 POWER,0,0
 #define DRAW POWER/4,POWER/4,POWER/4
+#define SWITCH POWER/2, POWER/4, 0
 
 #define BUTTON_START 2
 #define BUTTON_END 11
@@ -64,6 +66,61 @@ void UIState_reset(void* u)
         ui->buttonsState[i] = 0;
 }
 
+void UIState_update_lights(void* u)
+{
+    UIState* ui = (UIState*)u;
+
+    for (uint16_t i = 0; i < 9; ++i)
+    {
+        if (ui->buttonsState[i] == 1)
+            ui->color[i] = _strip.Color(COLOR_PLAYER_1);
+        if (ui->buttonsState[i] == 2)
+            ui->color[i] = _strip.Color(COLOR_PLAYER_2);
+        else if (ui->buttonsState[i] == 0)
+            ui->color[i] = _strip.Color(COLOR_NONE);
+        set_button_color(i, ui->color[i]);
+    }
+    _strip.show();
+}
+
+//
+// Light stuff
+//
+void set_button_color(uint16_t id, uint32_t color)
+{
+    for (uint8_t i = id * 12; i < (id + 1) * 12; ++i)
+        _strip.setPixelColor(i, color);
+}
+
+void UIState_set_all_lights(void* u, uint32_t color, int time = 100, int stayDelay = 3000)
+{
+    UIState* ui = (UIState*)u;
+
+    for (uint8_t i = 0; i < 9; ++i)
+    {
+        ui->color[i] = color;
+        set_button_color(i, ui->color[i]);
+        delay(time);
+        _strip.show();
+    }
+    delay(stayDelay);
+}
+
+void UIState_set_rows(void* u, uint32_t color, uint8_t row_count, int stayDelay = 500)
+{
+    UIState* ui = (UIState*)u;
+
+    UIState_set_all_lights(u, _strip.Color(BLACK), 0, 0);
+    for (uint8_t i = 0; i < row_count; ++i)
+        for (uint8_t y = 0; y < 3; ++y)
+        {
+            ui->color[y*3 + i] = color;
+            set_button_color(y*3 + i, color);
+        }
+    _strip.show();
+    delay(stayDelay);
+}
+
 //
 // I/O stuff\
 //
@@ -86,23 +143,47 @@ void UIState_process_inputs(void* u, uint8_t playerId)
     // TODO: change default color based on IA
     if (potard < 255)
     {
-        ui->iaLevel = 0;
-        ui->IA_func = UIState_play_IA_noplay;
+        if (ui->iaLevel != 0)
+        {
+            ui->iaLevel = 0;
+            ui->IA_func = UIState_play_IA_noplay;
+            UIState_set_rows(u, _strip.Color(SWITCH), 0);
+            UIState_reset(ui);
+            UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
+        }
     }
     else if (potard < 512)
     {
-        ui->iaLevel = 1;
-        ui->IA_func = UIState_play_IA_random;
+        if (ui->iaLevel != 1)
+        {
+            ui->iaLevel = 1;
+            ui->IA_func = UIState_play_IA_random;
+            UIState_set_rows(u, _strip.Color(SWITCH), 1);
+            UIState_reset(ui);
+            UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
+        }
     }
     else if (potard < 768)
     {
-        ui->iaLevel = 2;
-        ui->IA_func = UIState_play_IA_semi_random;
+        if (ui->iaLevel != 2)
+        {
+            ui->iaLevel = 2;
+            ui->IA_func = UIState_play_IA_semi_random;
+            UIState_set_rows(u, _strip.Color(SWITCH), 2);
+            UIState_reset(ui);
+            UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
+        }
     }
     else
     {
-        ui->iaLevel = 3;
-        ui->IA_func = UIState_play_IA_semi_random;
+        if (ui->iaLevel != 3)
+        {
+            ui->iaLevel = 3;
+            ui->IA_func = UIState_play_IA_semi_random;
+            UIState_set_rows(u, _strip.Color(SWITCH), 3);
+            UIState_reset(ui);
+            UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
+        }
     }
 
     // Check the number of buttons pressed
@@ -124,43 +205,6 @@ void UIState_process_inputs(void* u, uint8_t playerId)
             ui->coupPlayed++;
         }
     }
-}
-
-void UIState_update_lights(void* u)
-{
-    UIState* ui = (UIState*)u;
-
-    for (uint16_t i = 0; i < 9; ++i)
-    {
-        if (ui->buttonsState[i] == 1)
-            ui->color[i] = _strip.Color(COLOR_PLAYER_1);
-        if (ui->buttonsState[i] == 2)
-            ui->color[i] = _strip.Color(COLOR_PLAYER_2);
-        else if (ui->buttonsState[i] == 0)
-            ui->color[i] = _strip.Color(COLOR_NONE);
-        set_button_color(i, ui->color[i]);
-    }
-    _strip.show();
-}
-
-void UIState_set_all_lights(void* u, uint32_t color)
-{
-    UIState* ui = (UIState*)u;
-
-    for (uint8_t i = 0; i < 9; ++i)
-    {
-        ui->color[i] = color;
-        set_button_color(i, ui->color[i]);
-        delay(100);
-        _strip.show();
-    }
-    delay(3000);
-}
-
-void set_button_color(uint16_t id, uint32_t color)
-{
-    for (uint8_t i = id * 12; i < (id + 1) * 12; ++i)
-        _strip.setPixelColor(i, color);
 }
 
 //
@@ -232,7 +276,7 @@ int UIState_check_win(void* u, uint8_t player)
 //
 void setup() {
     // Debug stuff
-    //Serial.begin(9600);
+    Serial.begin(9600);
 
     // Buttons
     for (uint8_t i = BUTTON_START; i < BUTTON_END; ++i)
