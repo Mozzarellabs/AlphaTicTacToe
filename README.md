@@ -9,7 +9,7 @@ A physical tic-tac-toe with built-in 'AI'.
 - 1 Arduino UNO
 - 1 rotary button with four selection steps 
 - a wooden box 
-- 9 3D printed supports for buttons 
+- 9 3D printed supports for buttons (STL file in assets folder. Original can be modified here: https://tinkercad.com/things/gY5AuUcDHmH)
 
 ## 4 different modes  
 
