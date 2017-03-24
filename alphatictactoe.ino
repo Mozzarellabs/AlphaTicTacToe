@@ -6,11 +6,11 @@
 #include "./state.h"
 #include "./ia.h"
 
-#define POWER 32
+#define POWER 100
 #define DELAY 50
 
 #define BLACK 0, 0, 0
-#define COLOR_NONE 0,POWER/2,POWER/2
+#define COLOR_NONE POWER/100,POWER/100,POWER/8
 #define COLOR_PLAYER_1 0,POWER,0
 #define COLOR_PLAYER_2 POWER,0,0
 #define DRAW POWER/4,POWER/4,POWER/4
