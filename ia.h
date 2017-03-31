@@ -26,15 +26,14 @@ void UIState_play_IA_random(void* u)
     }
 }
 
-void UIState_play_IA_semi_random(void* u)
+void UIState_check_finish_line(void* u)
 {
-    delay(1000);
-
     UIState* ui = (UIState*)u;
 
     uint8_t inLine = 0;
     int8_t hline = -1;
     int8_t vline = -1;
+
     // Check whether we can prevent a line from being finished
     for (uint8_t i = 0; i < 3; ++i)
     {
@@ -219,6 +218,16 @@ void UIState_play_IA_semi_random(void* u)
                 return;
             }
     }
+}
+
+void UIState_play_IA_semi_random(void* u)
+{
+    delay(1000);
+
+    UIState* ui = (UIState*)u;
+
+    // Check whether we can prevent or finish a line
+    UIState_check_finish_line(u);
 
     // Otherwise, play random
     uint8_t played = 0;
@@ -238,33 +247,48 @@ void UIState_play_IA_semi_random(void* u)
 
 void UIState_play_IA_evil(void* u)
 {
+    delay(1000);
+
     UIState* ui = (UIState*)u;
 
-    if (ui->coupPlayed == 1)
+    // Check whether we can prevent or finish a line
+    UIState_check_finish_line(u);
+
+    // Play evil
+    // Take the middle
+    if (ui->buttonsState[4] == 0)
     {
-        if (ui->buttonsState[4] == 1)
+        ui->buttonsState[4] = 2;
+        ui->played = 1;
+        ui->coupPlayed++;
+        return;
+    }
+
+    // Take the corners
+    int corners[4] = {0, 2, 6, 8};
+    for (int i = 0; i < 4; ++i)
+    {
+        if (ui->buttonsState[corners[i]] == 0)
         {
-            switch (random(0, 3))
-            {
-            case 0:
-                ui->buttonsState[0] = 2;
-                break;
-            case 1:
-                ui->buttonsState[2] = 2;
-                break;
-            case 2:
-                ui->buttonsState[6] = 2;
-                break;
-            case 3:
-                ui->buttonsState[8] = 2;
-                break;
-            }
+            ui->buttonsState[corners[i]] = 2;
             ui->played = 1;
             ui->coupPlayed++;
             return;
         }
-        else
+    }
+
+    // Random!
+    uint8_t played = 0;
+    while (!played)
+    {
+        uint8_t id = random(0, 9);
+        if (ui->buttonsState[id] == 0)
         {
+            played = 1;
+            ui->buttonsState[id] = 2;
+            ui->played = 1;
+            ui->coupPlayed++;
+            return;
         }
     }
 }
