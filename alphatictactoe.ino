@@ -19,6 +19,10 @@
 #define BUTTON_START 2
 #define BUTTON_END 11
 #define PIN 11
+#define MODE0 A4
+#define MODE1 A1
+#define MODE2 A2
+#define MODE3 A3
 
 // Parameter 1 = number of pixels in _strip
 // Parameter 2 = Arduino pin number (most are valid)
@@ -106,19 +110,16 @@ void UIState_set_all_lights(void* u, uint32_t color, int time = 100, int stayDel
     delay(stayDelay);
 }
 
-void UIState_set_rows(void* u, uint32_t color, uint8_t row_count, int stayDelay = 500)
+void UIState_set_cols(void* u, uint32_t color, uint8_t col)
 {
     UIState* ui = (UIState*)u;
 
-    UIState_set_all_lights(u, _strip.Color(BLACK), 0, 0);
-    for (uint8_t i = 0; i < row_count; ++i)
-        for (uint8_t y = 0; y < 3; ++y)
-        {
-            ui->color[y*3 + i] = color;
-            set_button_color(y*3 + i, color);
-        }
+    for (uint8_t y = 0; y < 3; ++y)
+    {
+        ui->color[y*3 + col] = color;
+        set_button_color(y*3 + col, color);
+    }
     _strip.show();
-    delay(stayDelay);
 }
 
 //
@@ -139,51 +140,86 @@ void UIState_process_inputs(void* u, uint8_t playerId)
         buttons[realButtonId] = buttonState == LOW ? 1 : 0;
     }
 
-    int potard = analogRead(A4);
+    bool selected = false;
     // TODO: change default color based on IA
-    if (potard < 255)
+    // Two player mode
+    if (!selected && digitalRead(MODE0) == LOW)
     {
+        selected = true;
         if (ui->iaLevel != 0)
         {
             ui->iaLevel = 0;
             ui->IA_func = UIState_play_IA_noplay;
-            UIState_set_rows(u, _strip.Color(SWITCH), 0);
+            UIState_set_all_lights(u, _strip.Color(BLACK), 0, 0);
+            UIState_set_cols(u, _strip.Color(SWITCH), 0);
+            UIState_set_cols(u, _strip.Color(SWITCH), 2);
+            delay(500);
             UIState_reset(ui);
             UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
         }
     }
-    else if (potard < 512)
+
+    // Random IA
+    if (!selected && digitalRead(MODE1) == LOW)
     {
+        selected = true;
         if (ui->iaLevel != 1)
         {
             ui->iaLevel = 1;
             ui->IA_func = UIState_play_IA_random;
-            UIState_set_rows(u, _strip.Color(SWITCH), 1);
+            UIState_set_all_lights(u, _strip.Color(BLACK), 0, 0);
+            UIState_set_cols(u, _strip.Color(SWITCH), 0);
+            delay(500);
             UIState_reset(ui);
             UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
         }
     }
-    else if (potard < 768)
+
+    // Semi-random IA
+    if (!selected && digitalRead(MODE2) == LOW)
     {
+        selected = true;
         if (ui->iaLevel != 2)
         {
             ui->iaLevel = 2;
             ui->IA_func = UIState_play_IA_semi_random;
-            UIState_set_rows(u, _strip.Color(SWITCH), 2);
+            UIState_set_all_lights(u, _strip.Color(BLACK), 0, 0);
+            UIState_set_cols(u, _strip.Color(SWITCH), 0);
+            UIState_set_cols(u, _strip.Color(SWITCH), 1);
+            delay(500);
             UIState_reset(ui);
             UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
         }
     }
-    else
+
+    // Evil IA
+    if (!selected && digitalRead(MODE3) == LOW)
     {
+        selected = true;
         if (ui->iaLevel != 3)
         {
             ui->iaLevel = 3;
-            ui->IA_func = UIState_play_IA_semi_random;
-            UIState_set_rows(u, _strip.Color(SWITCH), 3);
+            ui->IA_func = UIState_play_IA_evil;
+            UIState_set_all_lights(u, _strip.Color(BLACK), 0, 0);
+            UIState_set_cols(u, _strip.Color(SWITCH), 0);
+            UIState_set_cols(u, _strip.Color(SWITCH), 1);
+            UIState_set_cols(u, _strip.Color(SWITCH), 2);
+            delay(500);
             UIState_reset(ui);
             UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
         }
+    }
+
+    // No clue about the mode: random IA
+    if (!selected)
+    {
+        ui->iaLevel = 1;
+        ui->IA_func = UIState_play_IA_random;
+        UIState_set_all_lights(u, _strip.Color(BLACK), 0, 0);
+        UIState_set_cols(u, _strip.Color(SWITCH), 0);
+        delay(500);
+        UIState_reset(ui);
+        UIState_set_all_lights(ui, _strip.Color(COLOR_NONE), 10, 0);
     }
 
     // Check the number of buttons pressed
@@ -283,8 +319,10 @@ void setup() {
         pinMode(i, INPUT_PULLUP);
 
     // Selector
-    analogReference(DEFAULT);
-    pinMode(A4, INPUT);
+    pinMode(MODE0, INPUT_PULLUP);
+    pinMode(MODE1, INPUT_PULLUP);
+    pinMode(MODE2, INPUT_PULLUP);
+    pinMode(MODE3, INPUT_PULLUP);
 
     // UI
     _ui = new UIState;
